@@ -13,11 +13,17 @@
 #define USE_MYTHREAD 1
 
 /* include lib header files that you need here: */
+//already added
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+//custom
+#include <ucontext.h>
+#include <signal.h>
+
 
 typedef uint mypthread_t;
 
@@ -31,6 +37,12 @@ typedef struct threadControlBlock {
 	// And more ...
 
 	// YOUR CODE HERE
+	unsigned thread_id;
+	unsigned thread_states;
+	ucontext_t thread_context;
+
+	unsigned thread_priority;
+
 } tcb;
 
 /* mutex struct definition */
@@ -44,7 +56,16 @@ typedef struct mypthread_mutex_t {
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
 // YOUR CODE HERE
+typedef struct Node{
+	void * data;
+	struct Node * next;
+} Node;
 
+typedef struct Queue{
+	int count;
+	Node * front;
+	Node * rear;
+} Queue;
 
 /* Function Declarations: */
 

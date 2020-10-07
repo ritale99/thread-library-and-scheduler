@@ -8,18 +8,86 @@
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
+//are we going to need a thread array?
 
+//multi-level queue
+Queue * master_queue;
 
 /* create a new thread */
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
                       void *(*function)(void*), void * arg) {
-       // create Thread Control Block
-       // create and initialize the context of this thread
-       // allocate space of stack for this thread to run
-       // after everything is all set, push this thread int
-       // YOUR CODE HERE
+	// create Thread Control Block
+    // create and initialize the context of this thread
+    // allocate space of stack for this thread to run
+    // after everything is all set, push this thread int
+    // YOUR CODE HERE
 
-    return 0;
+	//if master queue is empty
+	//we create a new master queue,
+	//and the first level queue as well
+	if ( master_queue == NULL ) master_queue = (Queue *) malloc (sizeof(Queue));
+	if ( isEmpty (master_queue) ){
+		Queue * queue_1 = (Queue*)malloc (sizeof(Queue));
+		Node * node = (Node *) malloc (sizeof(Node));
+		node->data = queue_1;
+		Enqueue(master_queue, node);
+	}
+
+	//We need to figure out based on the scheduler which queue level to send this thread too
+	//right now I'm assuming the first level
+
+	Node * thread_node = NULL;
+	char thread_stack [] = NULL;
+	tcb * tcb_ptr = NULL;
+
+	//do we have to create a pthread?
+
+	//allocate the stack based on the SIGSTKSZ size
+	thread_stack = malloc(SIGSTKSZ);
+	if ( thread_stack == NULL ) return -1;
+	//allocate space for tcb
+	tcb_ptr = (tcb) malloc(sizeof(tcb));
+	if ( tcb_ptr == NULL ){
+		free(thread_stack);
+		return -1;
+	}
+	thread_node = (Node *) malloc (sizeof(Node));
+	if ( thread_node == NULL ) {
+		free(tcb_ptr);
+		free(thread_stack);
+		return -1;
+	}
+	//assign thread_id
+	tcb_ptr->thread_id = 0;
+	//create thread context
+	ucontext_t * thread_context_ptr = &(tcb_ptr->thread_context);
+	//1st retrieve context
+	//2nd get current context and assign it to thread_context_ptr
+	if ( getcontext(thread_context_ptr) == -1 ) {
+		//we have received an error in an attempt
+		//to get the thread
+		free(thread_stack);
+		free(tcb_ptr);
+		return -1;
+	}
+	//define the successor context when this context is done
+	//it should be the main context
+	thread_context_ptr->uc_link = NULL;
+	//set the thread stack
+	thread_context_ptr->uc_stack.ss_sp = thread_stack;
+	thread_context_ptr->uc_stack.ss_size = sizeof(thread_stack);
+
+	makecontext( thread_context_ptr, function, arg ) ;
+
+	//TODO: other things are needed to complete this function
+
+	//currently let the thread_node data be the TCB
+	thread_node->data = tcb_ptr;
+
+	//enqueue to the front node (run node)
+	Enqueue(master_queue->front, thread_node);
+
+    return tcb_ptr->thread_id;
 };
 
 /* give CPU possession to other user-level threads voluntarily */
@@ -133,3 +201,95 @@ static void sched_mlfq() {
 // Feel free to add any other functions you need
 
 // YOUR CODE HERE
+//get the node associated with the given threadID
+Node * GetNode(Queue * master_queue, int threadID){
+	if (master_queue == NULL) return NULL;
+	if (isempty(master_queue)) return NULL;
+	//get the first queue from the master_queue
+	Node * queue_ptr = master_queue->front;
+	//loop through each queue level
+	while ( queue_ptr != NULL ){
+		if (queue_ptr->data != NULL) {
+			//get the first thread node
+			Node * thread_ptr = ((Queue*)queue_ptr->data)->front;
+			//loop through each thread node
+			while ( thread_ptr != NULL ) {
+				//check if thread node has the matching threadID
+				if ( thread_ptr->data != NULL &&
+						((tcb *)thread_ptr->data)->thread_id == threadID) {
+					return thread_ptr;
+				}
+				thread_ptr = thread_ptr->next;
+			}
+		}
+		queue_ptr = queue_ptr->next;
+	}
+}
+//Generic Queue
+Queue * CreateQueue(){
+	Queue * queue = (Queue *) (malloc(sizeof(Queue)));
+	if ( queue == NULL ) return NULL;
+	queue->count = 0;
+	queue->front = NULL;
+	queue->rear = NULL;
+	return queue;
+}
+int isempty(Queue *q) {
+    return (q->rear == NULL);
+}
+int RemoveNode( Queue * queue , Node * node){
+	if ( node == NULL ) return 0;
+	if ( queue == NULL ) return 0;
+	Node * ptr = queue->front;
+	Node * prevPtr = NULL;
+	while ( ptr != NULL ) {
+		if ( ptr == node ){
+			if (prevPtr == NULL){
+				queue->front = NULL;
+				queue->rear = NULL;
+				queue->count--;
+				return 1;
+			}
+			else{
+				prevPtr->next = ptr->next;
+				ptr->next = NULL;
+				queue->count--;
+				return 1;
+			}
+		}
+		prevPtr = ptr;
+		ptr = ptr->next;
+	}
+	return 0;
+}
+void Enqueue(Queue * queue , Node * node){
+	if ( node == NULL ) return;
+	if ( queue == NULL ) return;
+	if ( !isempty(queue) ){
+		queue->rear->next = node;
+		queue->rear = node;
+	}
+	else {
+		queue->front = queue->rear = node;
+	}
+	queue->count++;
+}
+Node * Dequeue(Queue * queue){
+	if ( queue == NULL || isempty(queue) ) return NULL;
+	Node * rtn;
+	rtn = queue->front;
+	queue->front = queue->front->next;
+	queue->count--;
+	return rtn;
+}
+Node * GetNode (Queue * queue, void * data) {
+	if ( data == NULL ) return NULL;
+	if ( queue == NULL ) return NULL;
+	if ( !isempty(queue) ) return NULL;
+	Node * rtn = queue->front;
+	while ( rtn != NULL ) {
+		if ( rtn->data == data ) return rtn;
+		rtn = rtn->next;
+	}
+	return NULL;
+}

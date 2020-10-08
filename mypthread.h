@@ -13,11 +13,25 @@
 #define USE_MYTHREAD 1
 
 /* include lib header files that you need here: */
+//already added
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+//custom
+#include <ucontext.h>
+#include <signal.h>
+
+//define all possible states for the thread
+typedef enum Thread_State {
+	Running = 0,
+	Ready = 1,
+	Waiting = 2,
+	Blocked = 3,
+	Done = 4
+} Thread_State;
 
 typedef uint mypthread_t;
 
@@ -31,6 +45,12 @@ typedef struct threadControlBlock {
 	// And more ...
 
 	// YOUR CODE HERE
+	unsigned thread_id;
+	Thread_State thread_state;
+	ucontext_t thread_context;
+	mypthread_t thread_t;
+	unsigned thread_priority;
+
 } tcb;
 
 /* mutex struct definition */
@@ -44,7 +64,16 @@ typedef struct mypthread_mutex_t {
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
 // YOUR CODE HERE
+typedef struct Node{
+	void * data;
+	struct Node * next;
+} Node;
 
+typedef struct Queue{
+	int count;
+	Node * front;
+	Node * rear;
+} Queue;
 
 /* Function Declarations: */
 
@@ -52,7 +81,7 @@ typedef struct mypthread_mutex_t {
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void
     *(*function)(void*), void * arg);
 
-/* give CPU pocession to other user level threads voluntarily */
+/* give CPU procession to other user level threads voluntarily */
 int mypthread_yield();
 
 /* terminate a thread */

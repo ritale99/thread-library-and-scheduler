@@ -24,6 +24,14 @@
 #include <ucontext.h>
 #include <signal.h>
 
+//define all possible states for the thread
+typedef enum Thread_State {
+	Running = 0,
+	Ready = 1,
+	Waiting = 2,
+	Blocked = 3,
+	Done = 4
+} Thread_State;
 
 typedef uint mypthread_t;
 
@@ -38,9 +46,9 @@ typedef struct threadControlBlock {
 
 	// YOUR CODE HERE
 	unsigned thread_id;
-	unsigned thread_states;
+	Thread_State thread_state;
 	ucontext_t thread_context;
-
+	mypthread_t thread_t;
 	unsigned thread_priority;
 
 } tcb;
@@ -73,7 +81,7 @@ typedef struct Queue{
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr, void
     *(*function)(void*), void * arg);
 
-/* give CPU pocession to other user level threads voluntarily */
+/* give CPU procession to other user level threads voluntarily */
 int mypthread_yield();
 
 /* terminate a thread */

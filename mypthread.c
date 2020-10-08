@@ -8,10 +8,12 @@
 
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
-//are we going to need a thread array?
 
 //multi-level queue
 Queue * master_queue;
+
+//main context
+static ucontext_t main_context;
 
 /* create a new thread */
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
@@ -36,6 +38,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 	//We need to figure out based on the scheduler which queue level to send this thread too
 	//right now I'm assuming the first level
 
+	//initialization
 	Node * thread_node = NULL;
 	char thread_stack [] = NULL;
 	tcb * tcb_ptr = NULL;
@@ -51,18 +54,27 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 		free(thread_stack);
 		return -1;
 	}
+	//allocate space for the thread_node
 	thread_node = (Node *) malloc (sizeof(Node));
 	if ( thread_node == NULL ) {
 		free(tcb_ptr);
 		free(thread_stack);
 		return -1;
 	}
+
 	//assign thread_id
 	tcb_ptr->thread_id = 0;
+
+	//assign thread_state to ready state
+	tcb_ptr->thread_state = Ready;
+
+	//assign thread_t
+	tcb_ptr->thread_t = thread;
+
 	//create thread context
 	ucontext_t * thread_context_ptr = &(tcb_ptr->thread_context);
-	//1st retrieve context
-	//2nd get current context and assign it to thread_context_ptr
+
+	//assign current context to thread_context_ptr
 	if ( getcontext(thread_context_ptr) == -1 ) {
 		//we have received an error in an attempt
 		//to get the thread
@@ -70,9 +82,10 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 		free(tcb_ptr);
 		return -1;
 	}
+
 	//define the successor context when this context is done
 	//it should be the main context
-	thread_context_ptr->uc_link = NULL;
+	thread_context_ptr->uc_link = &main_context;
 	//set the thread stack
 	thread_context_ptr->uc_stack.ss_sp = thread_stack;
 	thread_context_ptr->uc_stack.ss_size = sizeof(thread_stack);
@@ -87,6 +100,8 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 	//enqueue to the front node (run node)
 	Enqueue(master_queue->front, thread_node);
 
+	//scheduler
+
     return tcb_ptr->thread_id;
 };
 
@@ -95,7 +110,14 @@ int mypthread_yield() {
 
 	// change thread state from Running to Ready
 	// save context of this thread to its thread control block
-	// wwitch from thread context to scheduler context
+	// with from thread context to scheduler context
+
+	if (master_queue == NULL) return -1;
+	//get current context
+	//swap context with main
+	//put thread in ready state
+
+
 
 	// YOUR CODE HERE
 	return 0;
@@ -201,7 +223,8 @@ static void sched_mlfq() {
 // Feel free to add any other functions you need
 
 // YOUR CODE HERE
-//get the node associated with the given threadID
+
+//Get the node associated with the given threadID
 Node * GetNode(Queue * master_queue, int threadID){
 	if (master_queue == NULL) return NULL;
 	if (isempty(master_queue)) return NULL;
@@ -225,6 +248,31 @@ Node * GetNode(Queue * master_queue, int threadID){
 		queue_ptr = queue_ptr->next;
 	}
 }
+
+//Get the tcb node based on the threadContext
+Node * GetNode ( Queue * master_queue , ucontext_t * threadContext ){
+	if (master_queue == NULL) return NULL;
+	if (isempty(master_queue)) return NULL;
+	//get the first queue from the master_queue
+	Node * queue_ptr = master_queue->front;
+	//loop through each queue level
+	while ( queue_ptr != NULL ){
+		if (queue_ptr->data != NULL) {
+			//get the first thread node
+			Node * thread_ptr = ((Queue*)queue_ptr->data)->front;
+			//loop through each thread node
+			while ( thread_ptr != NULL ) {
+				//check if thread node has the matching threadID
+				if ( thread_ptr->data != NULL &&
+						((tcb *)thread_ptr->data)->thread_context == *threadContext) {
+						return thread_ptr;
+				}
+				thread_ptr = thread_ptr->next;
+			}
+		}
+		queue_ptr = queue_ptr->next;
+	}
+}
 //Generic Queue
 Queue * CreateQueue(){
 	Queue * queue = (Queue *) (malloc(sizeof(Queue)));
@@ -237,7 +285,7 @@ Queue * CreateQueue(){
 int isempty(Queue *q) {
     return (q->rear == NULL);
 }
-int RemoveNode( Queue * queue , Node * node){
+int DequeueNode( Queue * queue , Node * node){
 	if ( node == NULL ) return 0;
 	if ( queue == NULL ) return 0;
 	Node * ptr = queue->front;

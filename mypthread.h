@@ -33,6 +33,11 @@ typedef enum Thread_State {
 	Done = 4
 } Thread_State;
 
+typedef enum Schedule_Policy {
+	STCF = 0,
+	MLFQ = 1
+} Schedule_Policy;
+
 typedef uint mypthread_t;
 
 typedef struct threadControlBlock {
@@ -45,16 +50,18 @@ typedef struct threadControlBlock {
 	// And more ...
 
 	// YOUR CODE HERE
-	//thread's ID
-	unsigned thread_id;
 	//state of thread
 	Thread_State thread_state;
 	//context switcher
 	ucontext_t thread_context;
 	//thread type?
-	mypthread_t thread_t;
+	mypthread_t thread_id;
 	//thread priority
 	unsigned thread_priority;
+	char * thread_stack;
+	//return val
+	void ** joined_val;
+	void * return_val;
 
 } tcb;
 
@@ -107,6 +114,33 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex);
 
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
+
+/* get fresh thread id */
+mypthread_t FreshThreadID ();
+
+/* get node associated with thread id*/
+Node * GetNode (mypthread_t threadID);
+
+/* get the queue containing the given node */
+Queue * FindQueueContainingNode (Node * node);
+
+/* get the queue containing the given threadID */
+Queue * FindQueueContainingThreadID (mypthread_t threadID);
+
+/* remove given node from the master queue */
+int mypthread_DequeueNode(Node * node);
+
+Queue * CreateQueue();
+
+int isempty(Queue * q);
+
+int DequeueNode(Queue *queue, Node *node);
+
+void Enqueue(Queue *queue, Node *node);
+
+Node* Dequeue(Queue *queue);
+
+Node * Peek(Queue *queue);
 
 #ifdef USE_MYTHREAD
 #define pthread_t mypthread_t

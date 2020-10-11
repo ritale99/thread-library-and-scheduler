@@ -226,11 +226,28 @@ void mypthread_exit(void *value_ptr) {
 /* Wait for thread termination */
 int mypthread_join(mypthread_t thread, void **value_ptr) {
 
-	// wait for a specific thread to terminate
-	// de-allocate any dynamic memory created by the joining thread
+        // wait for a specific thread to terminate
+        // de-allocate any dynamic memory created by the joining thread
+        // if the value_ptr is not null, the return value of the exiting thread will be passed back
+        // ensures that the calling thread will not continue execution until the one it references exits
 
-	// YOUR CODE HERE
-	return 0;
+        tcb* curr_tcb_ptr = NULL;
+        Node* curr_node = GetNode(thread);
+
+        if (curr_node == NULL) {
+                printf("Error, could not find the thread in queue: %u\n",thread);
+                return -1;
+        }
+
+        curr_tcb_ptr = (tcb*)(curr_node->data);
+
+
+        while(curr_tcb_ptr->thread_state != Done){
+                mypthread_yield();
+        }
+
+        curr_tcb_ptr->return_val = value_ptr;
+        return 0;
 };
 
 /* initialize the mutex lock */

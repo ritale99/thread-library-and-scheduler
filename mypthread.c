@@ -1,6 +1,6 @@
 // File:	mypthread.c
 
-// List all group member's name:
+// List all group member's name: Rithvik Aleshetty, Minhesota Geusic
 // username of iLab:
 // iLab Server:
 
@@ -57,8 +57,8 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 	tcb * tcb_ptr = NULL;
 	//currently we dont have a way to generate a fresh id
 	//TODO: generate fresh id
-	//mypthread_t thread_id = FreshThreadID();
-	mypthread_t thread_id = 1;
+	mypthread_t thread_id = FreshThreadID();
+	//mypthread_t thread_id = 1;
 
 	//allocate the stack based on the SIGSTKSZ size
 	thread_stack = (char *)malloc(SIGSTKSZ);

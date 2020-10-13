@@ -1,6 +1,6 @@
 // File:	mypthread.c
 
-// List all group member's name:
+// List all group member's name: Rithvik Aleshetty, Minhesota Geusic
 // username of iLab:
 // iLab Server:
 

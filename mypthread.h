@@ -115,6 +115,9 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex);
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
 
+
+void PrintMyQueue();
+
 /* get fresh thread id */
 mypthread_t FreshThreadID ();
 

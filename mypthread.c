@@ -1,6 +1,6 @@
 // File:	mypthread.c
 
-// List all group member's name: Rithvik Aleshetty, Minhesota Geusic
+// List all group member's name:
 // username of iLab:
 // iLab Server:
 
@@ -95,6 +95,7 @@ static void schedule() {
 			inner_queue_node = inner_queue_node->next;
 			continue;
 		}
+		//PrintMyQueue();
 		thread_node = Dequeue(inner_queue);
 		count++;
 		if ( thread_node == NULL || thread_node->data == NULL ) {
@@ -106,6 +107,7 @@ static void schedule() {
 		printf("thread: %d\n", tcb_ptr->thread_id);
 		some_queue = inner_queue;
 
+		//PrintMyQueue();
 		if ( tcb_ptr->thread_state == Running ) {
 			printf("it was running\n");
 			tcb_ptr = NULL;
@@ -114,7 +116,11 @@ static void schedule() {
 		}
 		break;
 	}
-	if ( tcb_ptr == NULL ) return;
+	if ( tcb_ptr == NULL ) {
+		return;
+	}
+
+	//PrintMyQueue();
 	//1.save the main context? (not needed)
 	//2.set new curr_thread_id
 	//3.get new context
@@ -262,6 +268,7 @@ int mypthread_yield() {
 		schedule();
 	}else {
 		curr_node = GetNode(curr_thread_id);
+		//PrintMyQueue();
 		//URGENT: if their node does not exist, what do we do????
 		if ( curr_node == NULL ) {
 			printf("(139) Error, could not find the node: %d\n", curr_thread_id);
@@ -274,6 +281,7 @@ int mypthread_yield() {
 		}
 		curr_tcb_node->thread_state = Ready;
 		//switch curr_thread_id to the main_thread_id
+		printf("switching back to main from %d\n", curr_thread_id);
 		curr_thread_id = main_thread_id;
 		swapcontext(&(curr_tcb_node->thread_context), &(main_tcb.thread_context));
 	}
@@ -309,7 +317,7 @@ void mypthread_exit(void *value_ptr) {
 		printf("(314) error in attempting to dequeue node\n");	//remove before submission
 	}
 	//curr_tcb_ptr->thread_id = 0;
-	free(curr_tcb_ptr->return_val);
+	//free(curr_tcb_ptr->return_val);
 	free(curr_tcb_ptr->joined_val);
 	free(curr_tcb_ptr->thread_stack);
 
@@ -329,6 +337,9 @@ void mypthread_exit(void *value_ptr) {
 	//&curr_node = NULL;
 
 	curr_thread_id = main_thread_id;
+
+	//PrintMyQueue();
+	//exit(0);
 	//exit(0);
 };
 
@@ -347,20 +358,27 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 	Node* curr_node = GetNode(thread);
 
 	if (curr_node == NULL) {
-		printf("Error, could not find the thread in queue: %u\n",thread);
+		printf("Error, could not find the thread in queue: %d\n",thread);
 	    return -1;
     }
-
+	PrintMyQueue();
 	//convert the requested node into tcb
 	curr_tcb_ptr = (tcb*)(curr_node->data);
 	while(curr_node != NULL && curr_node->data != NULL &&
 			curr_tcb_ptr->thread_state != Done){
 		//PrintMyQueue();
 		mypthread_yield();
-		printf("still waiting on thread: %d\n", curr_tcb_ptr->thread_id);
+		//we look for the same thread again and check if it has been removed
+		curr_node = GetNode(thread);
+		if ( curr_node == NULL ){
+			break;
+		}
+		curr_tcb_ptr = (tcb*)(curr_node->data);
+		printf("still waiting on thread: %d\n\n", curr_tcb_ptr->thread_id);
     }
 
-	curr_tcb_ptr->return_val = value_ptr;
+	//i believe it should be joined val and not return val
+	if ( curr_tcb_ptr == NULL && value_ptr != NULL ) value_ptr = curr_tcb_ptr->return_val;
 	return 0;
 };
 
@@ -487,11 +505,12 @@ void PrintMyQueue(){
 		}
 		while(thread_node!=NULL){
 			if(thread_node->data == NULL) {
+				printf("%u\n", thread_node);
 				thread_node = thread_node->next;
 				continue;
 			}
 			tcb_ptr = (tcb*) thread_node->data;
-			printf("TCB ID: %d, Status: %d, Priority: %d in queue level: %d\n", tcb_ptr->thread_id, tcb_ptr->thread_state, tcb_ptr->thread_priority, queueLevel);
+			printf("TCB %u\tID: %d, Status: %d, Priority: %d in queue level: %d\n", thread_node, tcb_ptr->thread_id, tcb_ptr->thread_state, tcb_ptr->thread_priority, queueLevel);
 			thread_node = thread_node->next;
 		}
 		queueLevel++;
@@ -604,18 +623,22 @@ int DequeueNode( Queue * queue , Node * node){
 	Node * ptr = queue->front;
 	Node * prevPtr = NULL;
 	while ( ptr != NULL ) {
+		//printf("target: %d\tcurrNode: %d\n", ((tcb*)(node->data))->thread_id,((tcb*)(ptr->data))->thread_id);
 		if ( ptr == node ){
+			queue->count--;
 			if (prevPtr == NULL){
 				queue->front = NULL;
 				queue->rear = NULL;
-				queue->count--;
 				printf("Called here\n");
 				return 1;
 			}
 			else{
+				//printf("prevPtr: %d\tnextnext: %d\n", ((tcb*)(prevPtr->data))->thread_id, ((tcb*)(ptr->next->data))->thread_id);
 				prevPtr->next = ptr->next;
 				ptr->next = NULL;
-				queue->count--;
+				//set rear to the previous node
+				//if the removed node is the rear node
+				if ( queue->rear == ptr ) queue->rear = prevPtr;
 				printf("Called here 2\n");
 				return 1;
 			}
@@ -634,22 +657,22 @@ void Enqueue(Queue * queue , Node * node){
 		printf("queue is null\n");
 		return;
 	}
-	if ( !isempty(queue) ){
-		//printf("insert node %u to queue\n", node);
+	if ( queue->count != 0 ){
 		queue->rear->next = node;
 		queue->rear = node;
+		//PrintMyQueue();
 	}
 	else {
-		//printf("double\n");
 		queue->front = queue->rear = node;
 	}
 	queue->count++;
 }
 Node * Dequeue(Queue * queue){
-	if ( queue == NULL || isempty(queue) ) return NULL;
+	if ( queue == NULL || queue->count == 0 ) return NULL;
 	Node * rtn;
 	rtn = queue->front;
 	queue->front = queue->front->next;
+	rtn->next = NULL;
 	queue->count--;
 	if (queue->count == 0) queue->rear = NULL;
 	return rtn;

@@ -368,8 +368,10 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 int mypthread_mutex_init(mypthread_mutex_t *mutex,
                           const pthread_mutexattr_t *mutexattr) {
 	//initialize data structures for this mutex
-
-	// YOUR CODE HERE
+	if(mutex == NULL) printf("Error: mutex does not exist"); return -1;	
+	mutex->available = 0;
+	mutex->thread = curr_thread_id;
+	mutex->list = malloc(sizeof(Queue));
 	return 0;
 };
 
@@ -379,8 +381,33 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
         // if the mutex is acquired successfully, enter the critical section
         // if acquiring mutex fails, push current thread into block list and //
         // context switch to the scheduler thread
+	
+	//TST returns prior value and punches in 1
+	if(__atomic_test_and_set(&(mutex->available),1)==1){
+		//acquiring mutex failed		
+		//current thread enters block list
 
-        // YOUR CODE HERE
+		//switch to scheduler thread
+		if(curr_thread_id == main_thread_id){
+			schedule();
+		}else{
+			//switch to scheduler thread
+			/*
+			Node* curr_node = GetNode(curr_thread_id);
+			if(curr_node == NULL){printf("Error, Could not find the node: %d\n", curr_thread_id); 
+			return -1;
+			}
+			tcb* curr_tcb_node = (tcb*)(curr_node->data);
+			if(curr_tcb_node == NULL){printf("Error, main tcb is null\n");}
+			curr_tcb_node->thread_state = Blocked;
+			//switch curr_thread_id to the main_tread_id
+			printf("Switching back to main from %d\n", curr_thread_id);
+			curr_thread_id = main_thread_id;
+			swapcontext(&(curr_tcb_node->thread_context) , &(main_tcb.thread_context));
+			*/
+			} 
+	}
+
         return 0;
 };
 
@@ -390,7 +417,9 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 	// Put threads in block list to run queue
 	// so that they could compete for mutex later.
 
-	// YOUR CODE HERE
+	//release the lock
+	mutex->available = 0;
+
 	return 0;
 };
 
@@ -398,7 +427,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
 	// Deallocate dynamic memory created in mypthread_mutex_init
-
+	free(mutex->list);
 	return 0;
 };
 

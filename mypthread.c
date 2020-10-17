@@ -14,10 +14,18 @@ Queue * master_queue;
 
 //main context
 const static mypthread_t main_thread_id = 0;
-tcb main_tcb;
 ucontext_t main_context;
 char * main_stack;
 uint init = 0;
+tcb main_tcb;
+
+//timer
+struct sigaction sa;
+struct itimerval timer;
+struct itimerval old_time;
+
+suseconds_t interruption_time = 256;
+
 //scheduler
 Schedule_Policy sched;
 
@@ -25,32 +33,18 @@ Schedule_Policy sched;
 mypthread_t curr_thread_id;
 
 //private
-/* use to initialize main context and queue */
-static void mypthread_init(){
-	printf("initializing\n");
-	master_queue = CreateQueue();
-
-	if ( master_queue == NULL ) exit(1);
-
-	main_tcb.thread_id = main_thread_id;
-	main_tcb.thread_state = Running;
-
-	//currently create one level
-	Queue * queue_0 = CreateQueue();
-	Node * queue_node = (Node *) malloc (sizeof(Node));
-	queue_node->data = (void*) queue_0;
-	Enqueue(master_queue, queue_node);
-
-	init = 1;
-}
 static void thread_helper (void * (*function) (void*), void * arg){
 	mypthread_exit(function(arg));
 }
 /* scheduler */
 static void schedule() {
+
+	//store timer value to a temp variable, and stop timer
+	setitimer(ITIMER_REAL, NULL, &timer);
 	//when this function is called we should assume that the main_thread called it
 	if ( main_thread_id != 0 ) {
 		printf("(31) here\n");
+		setitimer(ITIMER_REAL, &timer, NULL);
 		return;
 	}
 
@@ -72,16 +66,30 @@ static void schedule() {
 
 	Node * inner_queue_node = NULL;
 	Node * thread_node = NULL;
+	Node * prevThreadNode = NULL;
 	Queue * inner_queue = NULL;
 
 	Queue * some_queue = NULL;
 
 	tcb * tcb_ptr = NULL;
+	tcb * prev_tcb_ptr = NULL;
 	mypthread_t nextThreadID;
+	mypthread_t prevThreadID = curr_thread_id;
+	ucontext_t prevThreadContext;
 	ucontext_t nextThreadContext;
 
 	uint threadCountAtQueue = 0;
 	uint count = 0;
+
+	if (prevThreadID != main_thread_id) {
+		if ( (prevThreadNode = GetNode(prevThreadID)) == NULL ){
+			printf("86 error\n");
+			return;
+		}
+		prev_tcb_ptr = (tcb*)(prevThreadNode->data);
+	}else{
+		prev_tcb_ptr = &main_tcb;
+	}
 
 	inner_queue_node = master_queue->front;
 
@@ -117,6 +125,7 @@ static void schedule() {
 		break;
 	}
 	if ( tcb_ptr == NULL ) {
+		setitimer(ITIMER_REAL, &timer, NULL);
 		return;
 	}
 
@@ -131,8 +140,12 @@ static void schedule() {
 	curr_thread_id = tcb_ptr->thread_id;
 	//tcb_ptr->thread_priority = 1;
 	//printf("(89) swapped to %d this is it prio %d\n", curr_thread_id, tcb_ptr->thread_priority);
-
-	swapcontext(&(main_tcb.thread_context), &(tcb_ptr->thread_context));
+	if ( prevThreadID != main_thread_id ) {
+		prev_tcb_ptr->thread_state = Ready;
+	}
+	//start timer again
+	setitimer(ITIMER_REAL, &timer, NULL);
+	swapcontext(&(prev_tcb_ptr->thread_context), &(tcb_ptr->thread_context));
 
 // schedule policy
 /*#ifndef MLFQ
@@ -161,8 +174,48 @@ static void sched_mlfq() {
 
 	// YOUR CODE HERE
 }
+/* Handle timer interrupt for scheduler */
+static void Timer_Interrupt_Handler(){
+	printf("\n\ninterrupted thread %d\n\n", curr_thread_id);
+	if (curr_thread_id != main_thread_id)
+		//mypthread_yield();
+		schedule();
+	printf("\ninterruptiong return %d\n\n", curr_thread_id);
+}
 
+/* use to initialize main context and queue */
+static void mypthread_init(){
+	printf("initializing\n");
+	master_queue = CreateQueue();
 
+	if ( master_queue == NULL ) exit(1);
+
+	//set up some stuff for the main thread
+	main_tcb.thread_id = main_thread_id;
+	main_tcb.thread_state = Running;
+
+	//currently create one level
+	Queue * queue_0 = CreateQueue();
+	Node * queue_node = (Node *) malloc (sizeof(Node));
+	queue_node->data = (void*) queue_0;
+	Enqueue(master_queue, queue_node);
+
+	//create timer interrupt
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = &Timer_Interrupt_Handler;
+	sigaction(SIGALRM,&sa,NULL);
+
+	timer.it_value.tv_sec = 0;
+	timer.it_value.tv_usec = interruption_time;
+	/* ... and every interruption_time msec after that. */
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_usec = interruption_time;
+	/* Start a virtual timer. It counts down whenever this process is
+	  executing. */
+	setitimer (ITIMER_REAL, &timer, NULL);
+
+	init = 1;
+}
 
 /* create a new thread */
 int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
@@ -386,23 +439,22 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 int mypthread_mutex_init(mypthread_mutex_t *mutex,
                           const pthread_mutexattr_t *mutexattr) {
 	//initialize data structures for this mutex
-	if(mutex == NULL) printf("Error: mutex does not exist"); return -1;	
+	if(mutex == NULL) printf("Error: mutex does not exist"); return -1;
 	mutex->available = 0;
 	mutex->thread = curr_thread_id;
 	mutex->list = malloc(sizeof(Queue));
 	return 0;
 };
-
 /* aquire the mutex lock */
 int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
         // use the built-in test-and-set atomic function to test the mutex
         // if the mutex is acquired successfully, enter the critical section
         // if acquiring mutex fails, push current thread into block list and //
         // context switch to the scheduler thread
-	
+
 	//TST returns prior value and punches in 1
 	if(__atomic_test_and_set(&(mutex->available),1)==1){
-		//acquiring mutex failed		
+		//acquiring mutex failed
 		//current thread enters block list
 
 		//switch to scheduler thread
@@ -412,7 +464,7 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
 			//switch to scheduler thread
 			/*
 			Node* curr_node = GetNode(curr_thread_id);
-			if(curr_node == NULL){printf("Error, Could not find the node: %d\n", curr_thread_id); 
+			if(curr_node == NULL){printf("Error, Could not find the node: %d\n", curr_thread_id);
 			return -1;
 			}
 			tcb* curr_tcb_node = (tcb*)(curr_node->data);
@@ -423,7 +475,7 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
 			curr_thread_id = main_thread_id;
 			swapcontext(&(curr_tcb_node->thread_context) , &(main_tcb.thread_context));
 			*/
-			} 
+			}
 	}
 
         return 0;
@@ -448,8 +500,6 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
 	free(mutex->list);
 	return 0;
 };
-
-
 // Feel free to add any other functions you need
 
 // YOUR CODE HERE

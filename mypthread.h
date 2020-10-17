@@ -1,6 +1,6 @@
 // File:	mypthread_t.h
 
-// List all group member's name:
+// List all group member's name: Rithvik Aleshetty, Minhesota Geusic
 // username of iLab:
 // iLab Server:
 
@@ -23,7 +23,8 @@
 //custom
 #include <ucontext.h>
 #include <signal.h>
-
+#include <sys/time.h>
+#include <string.h>
 //define all possible states for the thread
 typedef enum Thread_State {
 	Running = 0,
@@ -32,6 +33,24 @@ typedef enum Thread_State {
 	Blocked = 3,
 	Done = 4
 } Thread_State;
+
+typedef enum Schedule_Policy {
+	STCF = 0,
+	MLFQ = 1
+} Schedule_Policy;
+
+// YOUR CODE HERE
+typedef struct Node{
+	void * data;
+	struct Node * next;
+} Node;
+
+typedef struct Queue{
+	int count;
+	Node * front;
+	Node * rear;
+} Queue;
+
 
 typedef uint mypthread_t;
 
@@ -45,35 +64,36 @@ typedef struct threadControlBlock {
 	// And more ...
 
 	// YOUR CODE HERE
-	unsigned thread_id;
+	//state of thread
 	Thread_State thread_state;
+	//context switcher
 	ucontext_t thread_context;
-	mypthread_t thread_t;
+	//thread type?
+	mypthread_t thread_id;
+	//thread priority
 	unsigned thread_priority;
+	char * thread_stack;
+	//return val
+	void ** joined_val;
+	void * return_val;
 
 } tcb;
 
 /* mutex struct definition */
 typedef struct mypthread_mutex_t {
-	/* add something here */
+	//thread which locked the critical section
+	mypthread_t thread;
 
-	// YOUR CODE HERE
+	//the list of threads which are being blocked
+	Queue* list;
+
+	//the flag variable we manipulate with atomic instruction
+	volatile unsigned int available;
 } mypthread_mutex_t;
 
 /* define your data structures here: */
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
-// YOUR CODE HERE
-typedef struct Node{
-	void * data;
-	struct Node * next;
-} Node;
-
-typedef struct Queue{
-	int count;
-	Node * front;
-	Node * rear;
-} Queue;
 
 /* Function Declarations: */
 
@@ -102,6 +122,36 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex);
 
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
+
+
+void PrintMyQueue();
+
+/* get fresh thread id */
+mypthread_t FreshThreadID ();
+
+/* get node associated with thread id*/
+Node * GetNode (mypthread_t threadID);
+
+/* get the queue containing the given node */
+Queue * FindQueueContainingNode (Node * node);
+
+/* get the queue containing the given threadID */
+Queue * FindQueueContainingThreadID (mypthread_t threadID);
+
+/* remove given node from the master queue */
+int mypthread_DequeueNode(Node * node);
+
+Queue * CreateQueue();
+
+int isempty(Queue * q);
+
+int DequeueNode(Queue *queue, Node *node);
+
+void Enqueue(Queue *queue, Node *node);
+
+Node* Dequeue(Queue *queue);
+
+Node * Peek(Queue *queue);
 
 #ifdef USE_MYTHREAD
 #define pthread_t mypthread_t

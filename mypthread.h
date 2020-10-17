@@ -23,7 +23,8 @@
 //custom
 #include <ucontext.h>
 #include <signal.h>
-
+#include <sys/time.h>
+#include <string.h>
 //define all possible states for the thread
 typedef enum Thread_State {
 	Running = 0,
@@ -65,9 +66,21 @@ typedef struct threadControlBlock {
 
 } tcb;
 
+/* mutex struct definition */
+typedef struct mypthread_mutex_t {
+	//thread which locked the critical section
+	mypthread_t thread;
+
+	//the list of threads which are being blocked
+	Queue* list;
+
+	//the flag variable we manipulate with atomic instruction
+	volatile unsigned int available;
+} mypthread_mutex_t;
 
 /* define your data structures here: */
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
+
 // YOUR CODE HERE
 typedef struct Node{
 	void * data;
@@ -79,18 +92,6 @@ typedef struct Queue{
 	Node * front;
 	Node * rear;
 } Queue;
-
-/* mutex struct definition */
-typedef struct mypthread_mutex_t {
-	//thread which locked the critical section
-	mypthread_t thread;
-
-	//the list of threads which are being blocked
-	Queue* list;
-
-	//the flag variable we manipulate with atomic instruction
-	volatile unsigned int available; 	
-} mypthread_mutex_t;
 
 /* Function Declarations: */
 

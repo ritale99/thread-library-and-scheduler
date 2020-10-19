@@ -219,7 +219,7 @@ static void sched_mlfq() {
 static void Timer_Interrupt_Handler(){
 	printf("\n\ninterrupted thread %d\n\n", curr_thread_id);
 	schedule();
-	printf("\ninterruptiong return %d\n\n", curr_thread_id);
+	printf("\ninterrupting return %d\n\n", curr_thread_id);
 }
 
 /* use to initialize main context and queue */
@@ -528,11 +528,20 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 /* initialize the mutex lock */
 int mypthread_mutex_init(mypthread_mutex_t *mutex,
                           const pthread_mutexattr_t *mutexattr) {
-	//initialize data structures for this mutex
-	if(mutex == NULL) printf("Error: mutex does not exist"); return -1;
+	//we may ignore mutexattr
+	
+	//check if it isn't initialized
+	if(mutex == NULL) {printf("Error: mutex does not exist"); return -1;}
+	
+	//0 means available and and 1 means locked
 	mutex->available = 0;
+
+	//Match the threadID of the mutex to the thread which called init
 	mutex->thread = curr_thread_id;
-	mutex->list = malloc(sizeof(Queue));
+
+	//initialize data structures for this mutex
+	//each mutex carries its blocked list of threads
+	mutex->list = CreateQueue();
 	return 0;
 };
 /* aquire the mutex lock */
@@ -542,45 +551,57 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
         // if acquiring mutex fails, push current thread into block list and //
         // context switch to the scheduler thread
 
-	//TST returns prior value and punches in 1
+	//test and set returns prior value and punches in 1
 	if(__atomic_test_and_set(&(mutex->available),1)==1){
-		//acquiring mutex failed
-		//current thread enters block list
+		//if we reached here it means acquiring mutex failed
+		
+		//this occurs when the current thread is trying to lock its own already locked mutex
+		if(mutex->thread == curr_thread_id){
+		printf("(556)Error: Cannot lock when already locked by current thread");
+		}
+
+		//current thread enters block list of the current mutex
+		//CHANGE: create new node first and then push to list?
+		Enqueue(mutex->list, GetNode(curr_thread_id));
 
 		//switch to scheduler thread
-		if(curr_thread_id == main_thread_id){
-			schedule();
-		}else{
-			//switch to scheduler thread
-			/*
-			Node* curr_node = GetNode(curr_thread_id);
-			if(curr_node == NULL){printf("Error, Could not find the node: %d\n", curr_thread_id);
-			return -1;
-			}
-			tcb* curr_tcb_node = (tcb*)(curr_node->data);
-			if(curr_tcb_node == NULL){printf("Error, main tcb is null\n");}
-			curr_tcb_node->thread_state = Blocked;
-			//switch curr_thread_id to the main_tread_id
-			printf("Switching back to main from %d\n", curr_thread_id);
-			curr_thread_id = main_thread_id;
-			swapcontext(&(curr_tcb_node->thread_context) , &(main_tcb.thread_context));
-			*/
-			}
+		//should we do this by swap or this way? 
+		schedule();
+
 	}
 
-        return 0;
+	//Ensure the mutex thread is set to the current thread
+	mutex->thread = curr_thread_id; 
+	
+	//Continue to enter the critical section 
+	return 1;
 };
 
 /* release the mutex lock */
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 	// Release mutex and make it available again.
-	// Put threads in block list to run queue
-	// so that they could compete for mutex later.
-
+	// Put threads in block list to run queue so that they could compete for mutex later.
+	
+	//make sure that we aren't unlocking the mutex from another thread
+	if(mutex->thread != curr_thread_id){printf("(587)Error: Cannot unlock a mutex from a different thread"); exit(0);}
+	
 	//release the lock
 	mutex->available = 0;
 
-	return 0;
+	//here we do our restoration of blocks list of threads
+	Node * ptr = mutex->list->front; 
+	Node * next;
+	while(ptr != NULL){
+		//somewhere in here we need to put each one into the run queue for scheduling
+	
+
+		//remove each node from our blocked list
+		next = ptr->next;
+		ptr = next;
+	}
+
+	//continue execution of the current thread
+	return 1;
 };
 
 
@@ -593,7 +614,6 @@ int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
 // Feel free to add any other functions you need
 
 // YOUR CODE HERE
-
 //get a new mypthread_t
 mypthread_t FreshThreadID(){
 	//start at zero, then find the highest thread_id
@@ -793,6 +813,8 @@ int DequeueNode( Queue * queue , Node * node){
 	}
 	return -1;
 }
+
+//add the inputted node onto the end of the queue inputted
 void Enqueue(Queue * queue , Node * node){
 	if ( node == NULL ) {
 		printf("node is null\n");
@@ -812,6 +834,7 @@ void Enqueue(Queue * queue , Node * node){
 	}
 	queue->count++;
 }
+
 Node * Dequeue(Queue * queue){
 	if ( queue == NULL || queue->count == 0 ) return NULL;
 	Node * rtn;

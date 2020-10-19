@@ -39,6 +39,19 @@ typedef enum Schedule_Policy {
 	MLFQ = 1
 } Schedule_Policy;
 
+// YOUR CODE HERE
+typedef struct Node{
+	void * data;
+	struct Node * next;
+} Node;
+
+typedef struct Queue{
+	int count;
+	Node * front;
+	Node * rear;
+} Queue;
+
+
 typedef uint mypthread_t;
 
 typedef struct threadControlBlock {
@@ -81,17 +94,6 @@ typedef struct mypthread_mutex_t {
 /* define your data structures here: */
 // Feel free to add your own auxiliary data structures (linked list or queue etc...)
 
-// YOUR CODE HERE
-typedef struct Node{
-	void * data;
-	struct Node * next;
-} Node;
-
-typedef struct Queue{
-	int count;
-	Node * front;
-	Node * rear;
-} Queue;
 
 /* Function Declarations: */
 

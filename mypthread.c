@@ -10,41 +10,63 @@
 // YOUR CODE HERE
 
 //multi-level queue
-Queue * master_queue;
+static Queue * master_queue;
 
 //main context
 const static mypthread_t main_thread_id = 0;
-ucontext_t main_context;
-char * main_stack;
-uint init = 0;
-tcb main_tcb;
+static ucontext_t main_context;
+static char * main_stack;
+static uint init = 0;
+static tcb main_tcb;
 
 //timer
 struct sigaction sa;
 struct itimerval timer;
 struct itimerval old_time;
 
-suseconds_t interruption_time = 256;
+//signal
+static struct sigaction scheduler;
+
+static suseconds_t interruption_time = 20;
+
+static mypthread_t highest_id = 0;
+
+//race condition
+static uint in_critical = 0;
 
 //scheduler
 Schedule_Policy sched;
 
 //current running thread
-mypthread_t curr_thread_id;
+static mypthread_t curr_thread_id;
 
 //private
 static void thread_helper (void * (*function) (void*), void * arg){
+	if ( arg == NULL ) printf("arg null\n");
 	mypthread_exit(function(arg));
 }
 /* scheduler */
 static void schedule() {
 
+	//if another thread is currently using a critical section
+	//just return
+	if ( in_critical ) {
+		return;
+	}
+	in_critical = 1;
 	//store timer value to a temp variable, and stop timer
 	setitimer(ITIMER_REAL, NULL, &timer);
 	//when this function is called we should assume that the main_thread called it
 	if ( main_thread_id != 0 ) {
 		printf("(31) here\n");
 		setitimer(ITIMER_REAL, &timer, NULL);
+		in_critical = 0;
+		return;
+	}
+	if ( master_queue == NULL || master_queue->count == 0) {
+		//no queue
+		printf("no queue\n");
+		in_critical = 0;
 		return;
 	}
 
@@ -78,22 +100,34 @@ static void schedule() {
 	ucontext_t prevThreadContext;
 	ucontext_t nextThreadContext;
 
+	Thread_State prevContextState;
+
 	uint threadCountAtQueue = 0;
 	uint count = 0;
+
+	printf("Thread %d has started the scheduler\n", curr_thread_id);
 
 	if (prevThreadID != main_thread_id) {
 		if ( (prevThreadNode = GetNode(prevThreadID)) == NULL ){
 			printf("86 error\n");
+			in_critical = 0;
+			setitimer (ITIMER_REAL, &timer, NULL);
 			return;
 		}
 		prev_tcb_ptr = (tcb*)(prevThreadNode->data);
+		prevContextState = prev_tcb_ptr->thread_state;
 	}else{
 		prev_tcb_ptr = &main_tcb;
 	}
-
+	if(prev_tcb_ptr == NULL) {
+		printf("103 error\n");
+		in_critical = 0;
+		setitimer (ITIMER_REAL, &timer, NULL);
+		return;
+	}
 	inner_queue_node = master_queue->front;
 
-	printf("starting schedule\n");
+	printf("scheduler checkpoint 1\n");
 
 	while(inner_queue_node != NULL){
 		inner_queue = (Queue*)(inner_queue_node->data);
@@ -124,36 +158,43 @@ static void schedule() {
 		}
 		break;
 	}
+	printf("scheduler checkpoint 2\n");
+
 	if ( tcb_ptr == NULL ) {
+		in_critical = 0;
 		setitimer(ITIMER_REAL, &timer, NULL);
 		return;
 	}
+	printf("scheduler checkpoint 3\n");
 
-	//PrintMyQueue();
-	//1.save the main context? (not needed)
-	//2.set new curr_thread_id
-	//3.get new context
-	//4.swap context
+	printf("Thread that requested scheduler: %d\tSwitch Thread: %d\n", curr_thread_id, tcb_ptr->thread_id);
+	printf("Previous Thread's state: %d\n", prev_tcb_ptr->thread_state);
 
-	printf("prevID: %d\tcurrID: %d\n", curr_thread_id, tcb_ptr->thread_id);
 	tcb_ptr->thread_state = Running;
 	curr_thread_id = tcb_ptr->thread_id;
-	//tcb_ptr->thread_priority = 1;
-	//printf("(89) swapped to %d this is it prio %d\n", curr_thread_id, tcb_ptr->thread_priority);
+
 	if ( prevThreadID != main_thread_id ) {
 		prev_tcb_ptr->thread_state = Ready;
 	}
-	//start timer again
-	setitimer(ITIMER_REAL, &timer, NULL);
+
+	in_critical = 0;
+
+	setitimer(ITIMER_REAL,&timer,NULL);
+
 	swapcontext(&(prev_tcb_ptr->thread_context), &(tcb_ptr->thread_context));
 
+	printf("Thread that requested scheduler came back %d\n", prevThreadID);
+
+	if ( prevThreadID != main_thread_id ) {
+		prev_tcb_ptr->thread_state = prevContextState;
+	}
 // schedule policy
 /*#ifndef MLFQ
 	//sched_stcf();
 #else
 	//sched_mlfq();
 #endif*/
-
+	printf("Thread %d exiting scheduler\n", prevThreadID);
 }
 
 /* Preemptive SJF (STCF) scheduling algorithm */
@@ -177,15 +218,25 @@ static void sched_mlfq() {
 /* Handle timer interrupt for scheduler */
 static void Timer_Interrupt_Handler(){
 	printf("\n\ninterrupted thread %d\n\n", curr_thread_id);
-	if (curr_thread_id != main_thread_id)
-		//mypthread_yield();
-		schedule();
+	schedule();
 	printf("\ninterruptiong return %d\n\n", curr_thread_id);
 }
 
 /* use to initialize main context and queue */
 static void mypthread_init(){
-	printf("initializing\n");
+	printf("initializing mypthread\n");
+
+	scheduler.sa_handler = Timer_Interrupt_Handler;
+	scheduler.sa_flags = SA_RESTART;
+	sigemptyset(&scheduler.sa_mask);
+	sigaddset(&scheduler.sa_mask, SIGALRM);
+	if(sigaction(SIGALRM,&scheduler,NULL) != 0) return;
+
+	timer.it_value.tv_sec = 0;
+	timer.it_value.tv_usec = interruption_time;
+	timer.it_interval = timer.it_value;
+	if ( setitimer(ITIMER_REAL,&timer,NULL) != 0 ) return;
+
 	master_queue = CreateQueue();
 
 	if ( master_queue == NULL ) exit(1);
@@ -201,18 +252,17 @@ static void mypthread_init(){
 	Enqueue(master_queue, queue_node);
 
 	//create timer interrupt
-	memset(&sa, 0, sizeof(sa));
+	/*memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = &Timer_Interrupt_Handler;
 	sigaction(SIGALRM,&sa,NULL);
 
 	timer.it_value.tv_sec = 0;
 	timer.it_value.tv_usec = interruption_time;
-	/* ... and every interruption_time msec after that. */
 	timer.it_interval.tv_sec = 0;
 	timer.it_interval.tv_usec = interruption_time;
-	/* Start a virtual timer. It counts down whenever this process is
-	  executing. */
+
 	setitimer (ITIMER_REAL, &timer, NULL);
+	 */
 
 	init = 1;
 }
@@ -225,6 +275,10 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
     // allocate space of stack for this thread to run
     // after everything is all set, push this thread int
     // YOUR CODE HERE
+
+	//start critical section
+	in_critical = 1;
+
 	//initialization
 	ucontext_t * thread_context_ptr = NULL;
 	Node * thread_node = NULL;
@@ -238,12 +292,16 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 
 	//allocate the stack based on the SIGSTKSZ size
 	thread_stack = (char *)malloc(SIGSTKSZ);
-	if ( thread_stack == NULL ) return -1;
+	if ( thread_stack == NULL ) {
+		in_critical = 0;
+		return -1;
+	}
 
 	//allocate space for tcb
 	tcb_ptr = (tcb*) malloc(sizeof(tcb));
 	if ( tcb_ptr == NULL ){
 		free(thread_stack);
+		in_critical = 0;
 		return -1;
 	}
 
@@ -252,6 +310,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 	if ( thread_node == NULL ) {
 		free(tcb_ptr);
 		free(thread_stack);
+		in_critical = 0;
 		return -1;
 	}
 
@@ -272,7 +331,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 	//assign current context to thread_context_ptr
 	if ( getcontext(thread_context_ptr) == -1 ) {
 		//we have received an error in an attempt
-		//to get the thread
+		//to get the thread, free everything and end critical section
 		free(thread_node->next);
 		free(thread_node);
 		free(thread_stack);
@@ -280,6 +339,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 		free(tcb_ptr->return_val);
 		free(tcb_ptr->thread_stack);
 		free(tcb_ptr);
+		in_critical = 0;
 		return -1;
 	}
 
@@ -299,23 +359,34 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 
 	makecontext( thread_context_ptr, (void(*) (void))thread_helper, 2, function, arg ) ;
 
+	//end critical section
+	in_critical = 0;
+
     return 0;
 };
 
 /* give CPU possession to other user-level threads voluntarily */
 int mypthread_yield() {
+	in_critical = 1;
+	//setitimer (ITIMER_REAL, NULL, &timer);
+	if ( master_queue == NULL ){
+		//setitimer (ITIMER_REAL, &timer, NULL);
+		in_critical = 0;
+		return -1;
+	}
 
-	if ( master_queue == NULL ) return -1;
-
+	printf("\nThread %d requested to yield\n", curr_thread_id);
 	// change thread state from Running to Ready
 	// save context of this thread to its thread control block
 	// switch from thread context to scheduler context
 	Node * curr_node = NULL;
 	tcb * curr_tcb_node = NULL;
 	mypthread_t prev_thread_id;
+	in_critical = 0;
+	schedule();
+	printf("Thread %d return from yielding\n", curr_thread_id);
 
-	printf("Thread %d request to yield\n", curr_thread_id);
-
+	/*
 	if ( curr_thread_id == main_thread_id ) {
 		//if its the main thread we should call schedule
 		schedule();
@@ -325,6 +396,7 @@ int mypthread_yield() {
 		//URGENT: if their node does not exist, what do we do????
 		if ( curr_node == NULL ) {
 			printf("(139) Error, could not find the node: %d\n", curr_thread_id);
+			//setitimer (ITIMER_REAL, NULL, &timer);
 			return -1;
 		}
 		curr_tcb_node = (tcb*) (curr_node->data);
@@ -336,17 +408,21 @@ int mypthread_yield() {
 		//switch curr_thread_id to the main_thread_id
 		printf("switching back to main from %d\n", curr_thread_id);
 		curr_thread_id = main_thread_id;
+		//setitimer (ITIMER_REAL, &timer, NULL);
 		swapcontext(&(curr_tcb_node->thread_context), &(main_tcb.thread_context));
-	}
+	}*/
 	//idk if we need to call scheduler, probably not
-
+	//setitimer (ITIMER_REAL, &timer, NULL);
 	return 0;
 };
 
 /* terminate a thread */
 void mypthread_exit(void *value_ptr) {
 	// Deallocated any dynamic memory created when starting this thread
+	//setitimer (ITIMER_REAL, NULL, &timer);
 
+	//start critical section
+	in_critical = 1;
 	printf("Ending thread %d\n", curr_thread_id);
 
 	Node * curr_node = NULL;
@@ -356,26 +432,33 @@ void mypthread_exit(void *value_ptr) {
 
 	if ( curr_node == NULL ) {
 		printf("(188) Error, could not find the node: %d\n", curr_thread_id);
-		exit(0);
+		//setitimer (ITIMER_REAL, &timer, NULL);
+		in_critical = 0;
+		return;
 	}
 
 	curr_tcb_ptr = (tcb*) (curr_node->data);
 	curr_tcb_ptr->thread_state = Done;
 
 	//assign the main context the value_ptr of this context
-	if ( value_ptr != NULL ) main_tcb.joined_val = &value_ptr;	//do we use the joined_val?
+	//if ( value_ptr != NULL ) main_tcb.joined_val = &value_ptr;	//do we use the joined_val?
 
 	//remove from the queue
 	if ( mypthread_DequeueNode(curr_node) == -1 ) {
 		printf("(314) error in attempting to dequeue node\n");	//remove before submission
 	}
+
+	curr_tcb_ptr->return_val = value_ptr;
+	if ( curr_tcb_ptr->joined_val != NULL )
+		*(curr_tcb_ptr->joined_val) = value_ptr;
+
 	//curr_tcb_ptr->thread_id = 0;
 	//free(curr_tcb_ptr->return_val);
-	free(curr_tcb_ptr->joined_val);
+	//free(curr_tcb_ptr->joined_val);
 	free(curr_tcb_ptr->thread_stack);
 
-	curr_tcb_ptr->return_val = NULL;
-	curr_tcb_ptr->joined_val = NULL;
+	//curr_tcb_ptr->return_val = NULL;
+	//curr_tcb_ptr->joined_val = NULL;
 	curr_tcb_ptr->thread_stack = NULL;
 
 	free(((tcb*) (curr_node->data)));
@@ -390,15 +473,19 @@ void mypthread_exit(void *value_ptr) {
 	//&curr_node = NULL;
 
 	curr_thread_id = main_thread_id;
+	//setitimer (ITIMER_REAL, &timer, NULL);
+	PrintMyQueue();
 
-	//PrintMyQueue();
-	//exit(0);
-	//exit(0);
+	//end critical section
+	in_critical = 0;
 };
 
 
 /* Wait for thread termination */
 int mypthread_join(mypthread_t thread, void **value_ptr) {
+
+	//start critical section
+	in_critical = 1;
 
 	 // wait for a specific thread to terminate
 	// de-allocate any dynamic memory created by the joining thread
@@ -412,14 +499,19 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 
 	if (curr_node == NULL) {
 		printf("Error, could not find the thread in queue: %d\n",thread);
+		in_critical = 0;
 	    return -1;
     }
 	PrintMyQueue();
 	//convert the requested node into tcb
 	curr_tcb_ptr = (tcb*)(curr_node->data);
+
+	if ( value_ptr != NULL ) curr_tcb_ptr->joined_val = value_ptr;
+
 	while(curr_node != NULL && curr_node->data != NULL &&
 			curr_tcb_ptr->thread_state != Done){
 		//PrintMyQueue();
+		in_critical = 0;
 		mypthread_yield();
 		//we look for the same thread again and check if it has been removed
 		curr_node = GetNode(thread);
@@ -429,9 +521,7 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 		curr_tcb_ptr = (tcb*)(curr_node->data);
 		printf("still waiting on thread: %d\n\n", curr_tcb_ptr->thread_id);
     }
-
-	//i believe it should be joined val and not return val
-	if ( curr_tcb_ptr == NULL && value_ptr != NULL ) value_ptr = curr_tcb_ptr->return_val;
+	in_critical = 0;
 	return 0;
 };
 
@@ -509,8 +599,8 @@ mypthread_t FreshThreadID(){
 	//start at zero, then find the highest thread_id
 	//I don't know how else to do it
 
-	mypthread_t highest_threadID = main_thread_id;
-	Node * queue_level_node = master_queue->front;
+	mypthread_t highest_threadID = highest_id;
+	/*Node * queue_level_node = master_queue->front;
 	Node * thread_node = NULL;
 	Queue * inner_queue = NULL;
 	tcb * tcb_ptr = NULL;
@@ -535,7 +625,8 @@ mypthread_t FreshThreadID(){
 			thread_node = thread_node->next;
 		}
 		queue_level_node = queue_level_node->next;
-	}
+	}*/
+	highest_id++;
 	return highest_threadID + 1;
 }
 
@@ -640,6 +731,10 @@ Queue * FindQueueContainingThreadID (mypthread_t threadID){
 		}
 		//get the first thread node
 		inner_queue = (Queue*)(queue_level_node->data);
+		if ( inner_queue->front == NULL ) {
+			queue_level_node = queue_level_node->next;
+			continue;
+		}
 		thread_node = inner_queue->front;
 		//loop through each thread node
 		while ( thread_node != NULL ) {
@@ -677,8 +772,8 @@ int DequeueNode( Queue * queue , Node * node){
 		if ( ptr == node ){
 			queue->count--;
 			if (prevPtr == NULL){
-				queue->front = NULL;
-				queue->rear = NULL;
+				queue->front = ptr->next;
+				if(queue->rear == ptr) queue->rear = prevPtr;
 				printf("Called here\n");
 				return 1;
 			}

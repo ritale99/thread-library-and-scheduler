@@ -46,6 +46,7 @@ typedef enum Schedule_Proceed_State {
 typedef struct Node{
 	void * data;
 	struct Node * next;
+	struct Node * front;
 } Node;
 
 typedef struct Queue{
@@ -90,8 +91,8 @@ typedef struct mypthread_mutex_t {
 	mypthread_t thread;
 
 	//the list of threads which are being blocked
-	Queue* list;
-
+	//Queue* list;
+	Node* list; 
 	//the flag variable we manipulate with atomic instruction
 	volatile unsigned int available;
 } mypthread_mutex_t;

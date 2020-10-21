@@ -9,8 +9,11 @@
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
 
-//multi-level queue
+//main queue
 static Queue * master_queue;
+
+//mutex interrupt
+static mypthread_mutex_t* conMutex = NULL;
 
 //main context
 const static mypthread_t main_thread_id = 0;
@@ -117,9 +120,24 @@ static void sched_stcf_by_interrupt(){
 }
 /* schedule by stcf but caused by mutext */
 static void sched_stcf_by_mutex(){
-
+	//adjust by current time
 	stcf_adjust_curr_priority();
 
+	mypthread_mutex_t* mutex = conMutex;
+	
+	//point the next to the list of blocked threads
+	//waking of these waiting threads
+	//should we use master_queue instead?
+	
+//	Node * node = GetNode(curr_thread_id);
+	curr_node->next = mutex->list;
+	mutex->list = curr_node;
+
+	/*
+	curr_tcb->next = mutex->list
+	mutex->list = currentItem; 
+	*/
+	return;
 }
 
 /* Preemptive SJF (STCF) scheduling algorithm */
@@ -431,12 +449,13 @@ int mypthread_mutex_init(mypthread_mutex_t *mutex,
 	//0 means available and and 1 means locked
 	mutex->available = 0;
 
-	//Match the threadID of the mutex to the thread which called init
-	mutex->thread = curr_thread_id;
+	//mutex->thread = curr_thread_id;
+	
+	mutex->thread = -1;
 
 	//initialize data structures for this mutex
 	//each mutex carries its blocked list of threads
-	mutex->list = CreateQueue();
+	//mutex->list = CreateQueue();
 	return 0;
 };
 /* aquire the mutex lock */
@@ -445,23 +464,28 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
         // if the mutex is acquired successfully, enter the critical section
         // if acquiring mutex fails, push current thread into block list and //
         // context switch to the scheduler thread
-
+	//printf("attempting lock");
 	//test and set returns prior value and punches in 1
 	if(__atomic_test_and_set(&(mutex->available),1)==1){
 		//if we reached here it means acquiring mutex failed
 
+		//pause timer
+		setitimer (ITIMER_PROF, &pausedTimer, NULL);
+
 		//this occurs when the current thread is trying to lock its own already locked mutex
 		if(mutex->thread == curr_thread_id){
-		printf("(556)Error: Cannot lock when already locked by current thread");
+	//	printf("(556)Error: Cannot lock when already locked by current thread");
 		}
+
+		prevClosedState = Mutexed;
+		conMutex = mutex; 
 
 		//current thread enters block list of the current mutex
 		//CHANGE: create new node first and then push to list?
-		Enqueue(mutex->list, GetNode(curr_thread_id));
+		//Enqueue(mutex->list, GetNode(curr_thread_id));
 
-		//switch to scheduler thread
-		//should we do this by swap or this way?
-		schedule();
+		//switch to scheduler thread by swapping
+		swapcontext(&(curr_tcb->thread_context), &scheduler_context); 
 
 	}
 
@@ -476,24 +500,29 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
 int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 	// Release mutex and make it available again.
 	// Put threads in block list to run queue so that they could compete for mutex later.
-
+	//printf("attempting unlock");
 	//make sure that we aren't unlocking the mutex from another thread
 	if(mutex->thread != curr_thread_id){printf("(587)Error: Cannot unlock a mutex from a different thread"); exit(0);}
 
 	//release the lock
 	mutex->available = 0;
+	mutex->thread = -1; 
 
 	//here we do our restoration of blocks list of threads
-	Node * ptr = mutex->list->front;
-	Node * next;
-	while(ptr != NULL){
-		//somewhere in here we need to put each one into the run queue for scheduling
-
-
+	//Node * ptr = mutex->list->front;
+	//Node * next;
+	
+	while(mutex->list != NULL){
 		//remove each node from our blocked list
-		next = ptr->next;
-		ptr = next;
+		Node* item  = mutex->list;
+		mutex->list = mutex->list->next;
+		
+		Enqueue(master_queue, item);
+		printf("Did an enqueue");
+
+	
 	}
+//	printf("Finished Unlocking");
 
 	//continue execution of the current thread
 	return 1;
@@ -503,9 +532,9 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
 	// Deallocate dynamic memory created in mypthread_mutex_init
-	free(mutex->list);
+	//free(mutex->list);
 	return 0;
-};
+}
 // Feel free to add any other functions you need
 
 // YOUR CODE HERE

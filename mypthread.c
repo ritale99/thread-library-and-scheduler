@@ -116,7 +116,7 @@ static void sched_stcf_by_interrupt(){
 	//Enqueue(queue, prev_node);
 }
 /* schedule by stcf but caused by mutext */
-static void sched_stcf_by_mutext(){
+static void sched_stcf_by_mutex(){
 
 	stcf_adjust_curr_priority();
 
@@ -135,7 +135,7 @@ static void sched_stcf() {
 		else if ( prevClosedState == Yielded ) curr_tcb->thread_state = Ready;
 		else curr_tcb->thread_state = Blocked;
 	}else if (prevClosedState == Mutexed){
-		sched_stcf_by_mutext();
+		sched_stcf_by_mutex();
 		curr_tcb->thread_state = Blocked;
 	}else{
 		deallocContext(curr_tcb);

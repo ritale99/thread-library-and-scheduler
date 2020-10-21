@@ -29,15 +29,18 @@
 typedef enum Thread_State {
 	Running = 0,
 	Ready = 1,
-	Waiting = 2,
+	Scheduled = 2,
 	Blocked = 3,
 	Done = 4
 } Thread_State;
 
-typedef enum Schedule_Policy {
-	STCF = 0,
-	MLFQ = 1
-} Schedule_Policy;
+typedef enum Schedule_Proceed_State {
+	TimerInterrupt = 0,
+	Yielded = 1,
+	Mutexed = 2,
+	Joined = 3,
+	Finished = 4
+} Schedule_Proceed_State;
 
 // YOUR CODE HERE
 typedef struct Node{
@@ -50,7 +53,6 @@ typedef struct Queue{
 	Node * front;
 	Node * rear;
 } Queue;
-
 
 typedef uint mypthread_t;
 
@@ -71,11 +73,14 @@ typedef struct threadControlBlock {
 	//thread type?
 	mypthread_t thread_id;
 	//thread priority
-	unsigned thread_priority;
+	double thread_priority;
 	char * thread_stack;
 	//return val
 	void ** joined_val;
 	void * return_val;
+	//scheduler information
+	double elapsed_time_quantum;
+	struct timeval last_recorded_time;
 
 } tcb;
 
@@ -155,14 +160,14 @@ Node * Peek(Queue *queue);
 
 #ifdef USE_MYTHREAD
 #define pthread_t mypthread_t
-#define pthread_mutex_t mypthread_mutex_t
+//#define pthread_mutex_t mypthread_mutex_t
 #define pthread_create mypthread_create
 #define pthread_exit mypthread_exit
 #define pthread_join mypthread_join
-#define pthread_mutex_init mypthread_mutex_init
-#define pthread_mutex_lock mypthread_mutex_lock
-#define pthread_mutex_unlock mypthread_mutex_unlock
-#define pthread_mutex_destroy mypthread_mutex_destroy
+//#define pthread_mutex_init mypthread_mutex_init
+//#define pthread_mutex_lock mypthread_mutex_lock
+//#define pthread_mutex_unlock mypthread_mutex_unlock
+//#define pthread_mutex_destroy mypthread_mutex_destroy
 #endif
 
 #endif

@@ -354,7 +354,7 @@ int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
 
 	makecontext( thread_context_ptr, (void(*) (void))thread_helper, 2, function, arg ) ;
 
-	PrintMyQueue();
+	//PrintMyQueue();
 
     return 1;
 };
@@ -404,13 +404,13 @@ int mypthread_join(mypthread_t thread, void **value_ptr) {
 	// de-allocate any dynamic memory created by the joining thread
 	// if the value_ptr is not null, the return value of the exiting thread will be passed back
 	// ensures that the calling thread will not continue execution until the one it references exits
-	printf("attempting to join with %d\n", thread);
+	//printf("attempting to join with %d\n", thread);
 	tcb* requested_tcb = NULL;
 	//get the requested thread's node
 	Node* requested_node = GetNode(thread);
 
 	if (requested_node == NULL) {
-		printf("Error, could not find the thread in queue: %d\n",thread);
+		//printf("Error, could not find the thread in queue: %d\n",thread);
 		//PrintMyQueue();
 	    //if ( thread == 4 ) exit(0);
 	    return 0;
@@ -474,7 +474,7 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
 
 		//this occurs when the current thread is trying to lock its own already locked mutex
 		if(mutex->thread == curr_thread_id){
-	//	printf("(556)Error: Cannot lock when already locked by current thread");
+		printf("(556)Error: Cannot lock when already locked by current thread");
 		}
 
 		prevClosedState = Mutexed;
@@ -508,21 +508,15 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 	mutex->available = 0;
 	mutex->thread = -1; 
 
-	//here we do our restoration of blocks list of threads
-	//Node * ptr = mutex->list->front;
-	//Node * next;
-	
+	//here we do our restoration of blocks list of threads	
 	while(mutex->list != NULL){
 		//remove each node from our blocked list
 		Node* item  = mutex->list;
 		mutex->list = mutex->list->next;
 		
 		Enqueue(master_queue, item);
-		printf("Did an enqueue");
 
-	
 	}
-//	printf("Finished Unlocking");
 
 	//continue execution of the current thread
 	return 1;
@@ -532,13 +526,9 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
 	// Deallocate dynamic memory created in mypthread_mutex_init
-	//free(mutex->list);
 	return 0;
 }
 // Feel free to add any other functions you need
-
-// YOUR CODE HERE
-
 //get a new mypthread_t
 mypthread_t FreshThreadID(){
 	mypthread_t highest_threadID = highest_id;
@@ -546,7 +536,9 @@ mypthread_t FreshThreadID(){
 	return highest_threadID + 1;
 }
 
+
 /* Print out all the thread that exist within this queue */
+/*
 void PrintMyQueue(){
 	Node * thread_node = NULL;
 	tcb * tcb_ptr = NULL;
@@ -566,7 +558,7 @@ void PrintMyQueue(){
 	}
 
 }
-
+*/
 //Get the node associated with the given threadID
 Node * GetNode(mypthread_t threadID){
 	if (master_queue == NULL) return NULL;
@@ -610,7 +602,7 @@ int DequeueNode( Queue * queue , Node * node){
 			if (prevPtr == NULL){
 				queue->front = ptr->next;
 				if(queue->rear == ptr) queue->rear = prevPtr;
-				printf("Called here\n");
+				//printf("Called here\n");
 				return 1;
 			}
 			else{
@@ -619,7 +611,7 @@ int DequeueNode( Queue * queue , Node * node){
 				//set rear to the previous node
 				//if the removed node is the rear node
 				if ( queue->rear == ptr ) queue->rear = prevPtr;
-				printf("Called here 2\n");
+				//printf("Called here 2\n");
 				return 1;
 			}
 		}
@@ -631,11 +623,11 @@ int DequeueNode( Queue * queue , Node * node){
 /* enqueue a node to a given queue */
 void Enqueue(Queue * queue , Node * node){
 	if ( node == NULL ) {
-		printf("node is null\n");
+		//printf("node is null\n");
 		return;
 	}
 	if ( queue == NULL ) {
-		printf("queue is null\n");
+		//printf("queue is null\n");
 		return;
 	}
 	if ( queue->count != 0 ){

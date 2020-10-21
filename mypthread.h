@@ -160,14 +160,14 @@ Node * Peek(Queue *queue);
 
 #ifdef USE_MYTHREAD
 #define pthread_t mypthread_t
-//#define pthread_mutex_t mypthread_mutex_t
+#define pthread_mutex_t mypthread_mutex_t
 #define pthread_create mypthread_create
 #define pthread_exit mypthread_exit
 #define pthread_join mypthread_join
-//#define pthread_mutex_init mypthread_mutex_init
-//#define pthread_mutex_lock mypthread_mutex_lock
-//#define pthread_mutex_unlock mypthread_mutex_unlock
-//#define pthread_mutex_destroy mypthread_mutex_destroy
+#define pthread_mutex_init mypthread_mutex_init
+#define pthread_mutex_lock mypthread_mutex_lock
+#define pthread_mutex_unlock mypthread_mutex_unlock
+#define pthread_mutex_destroy mypthread_mutex_destroy
 #endif
 
 #endif
